@@ -1,0 +1,8 @@
+[package]
+name = "packman"
+version = "0.1.0"
+authors = ["Joshua Yanovski <pythonesque@gmail.com>"]
+
+[dependencies]
+glium = "*"
+cgmath = "*"
