@@ -1,10 +1,12 @@
 extern crate cgmath;
 #[macro_use]
 extern crate glium;
+extern crate time;
 
 use cgmath::{Angle, BaseFloat, BaseNum, EuclideanVector, One, Quaternion, Rad, Rotation, Rotation3, Point, Point2, Point3, Vector, Vector2, Vector3, Zero};
 
 use std::f32;
+use time::{PreciseTime};
 
 const SIZE: usize = 16;
 
@@ -64,7 +66,8 @@ struct Mob {
 impl Mob {
     /// Move.
     fn physics(&mut self, board: &Board, t: f32) {
-        let l = self.position + self.velocity * t;
+        let delta = self.velocity * t;
+        let l = self.position + delta;
         let mut nearest_face = (self.face, 1.0);
 
         for (face, &Face { position, normal }) in board.into_iter().enumerate() {
@@ -87,6 +90,10 @@ impl Mob {
                 SIZE as f32
             } else { n }
         }
+        // let p = d * l; // point of intersection
+        // There's leftover distance to travel: specifically, the remaining delta.
+        //let Vector3 { x, y, z } = l + self.velocity * t;
+        //let Vector3 { x, y, z } = l + self.velocity * t * / l.magnitude();
         let Vector3 { x, y, z } = l + self.velocity * t;
         self.position = Vector3 { x: clamp(x), y: clamp(y), z: clamp(z) };
     }
@@ -169,27 +176,27 @@ fn main() {
     let faces = [
         Face {
             position: [SIZE as f32, 0.0, 0.0].into(),
-            normal: [-1.0, 0.0, 0.0].into(),
-        },
-        Face {
-            position: [0.0, SIZE as f32, 0.0].into(),
-            normal: [0.0, -1.0, 0.0].into(),
-        },
-        Face {
-            position: [0.0, 0.0, SIZE as f32].into(),
-            normal: [0.0, 0.0, -1.0].into(),
-        },
-        Face {
-            position: [-(SIZE as f32), 0.0, 0.0].into(),
             normal: [1.0, 0.0, 0.0].into(),
         },
         Face {
-            position: [0.0, -(SIZE as f32), 0.0].into(),
+            position: [0.0, SIZE as f32, 0.0].into(),
             normal: [0.0, 1.0, 0.0].into(),
         },
         Face {
-            position: [0.0, 0.0, -(SIZE as f32)].into(),
+            position: [0.0, 0.0, SIZE as f32].into(),
             normal: [0.0, 0.0, 1.0].into(),
+        },
+        Face {
+            position: [-(SIZE as f32), 0.0, 0.0].into(),
+            normal: [-1.0, 0.0, 0.0].into(),
+        },
+        Face {
+            position: [0.0, -(SIZE as f32), 0.0].into(),
+            normal: [0.0, -1.0, 0.0].into(),
+        },
+        Face {
+            position: [0.0, 0.0, -(SIZE as f32)].into(),
+            normal: [0.0, 0.0, -1.0].into(),
         },
     ];
 
@@ -225,33 +232,56 @@ fn main() {
             velocity: [0.0, -0.5, 0.0].into(),
         },
     ];
+    let initial = [0.0, 0.0, 1.0].into();
     let face_shapes = faces.into_iter().map( |&Face { position, normal }| {
-        // let basis = Quaternion::from_axis_angle(board[self.face].normal, board[nearest_face.0].normal)
-        // let basis = Quaternion::look_at(position.into(), normal.into());
-        let initial = [0.0, 0.0, -1.0].into();
-        let q = if initial == -normal {
-            Quaternion::between_vectors([0.0, 0.0, 1.0].into(), normal)
+        fn orthogonal(v: Vector3<f32>) -> Vector3<f32>
+        {
+            let x = v.x.abs();
+            let y = v.y.abs();
+            let z = v.z.abs();
+
+            let other = if x < y {
+                if x < z { [1.0, 0.0, 0.0] }
+                else { [0.0, 0.0, 1.0] }
+            } else {
+                if y < z { [0.0, 1.0, 0.0] }
+                else { [0.0, 0.0, 1.0] }
+            };
+            v.cross(other.into())
+        }
+        let norm = normal.dot(initial);
+        let q = if norm == -1.0 {
+            Quaternion::from_sv(0.0, orthogonal(initial).normalize())
         } else {
             Quaternion::between_vectors(initial, normal)
         };
-        // let position = q.rotate_vector(self.velocity);
         let vertices = [
-            FaceVertex { position: (q * Vector3::from([-(SIZE as f32), SIZE as f32, 0.0]) + position).into(), normal: (-normal).into(), tex_coords: [-(SIZE as f32), SIZE as f32], },
-            FaceVertex { position: (q * Vector3::from([SIZE as f32, SIZE as f32, 0.0]) + position).into(), normal: (-normal).into(), tex_coords: [SIZE as f32, SIZE as f32], },
-            FaceVertex { position: (q * Vector3::from([-(SIZE as f32), -(SIZE as f32), 0.0]) + position).into(), normal: (-normal).into(), tex_coords: [-(SIZE as f32), -(SIZE as f32)], },
-            FaceVertex { position: (q * Vector3::from([SIZE as f32, -(SIZE as f32), 0.0]) + position).into(), normal: (-normal).into(), tex_coords: [SIZE as f32, -(SIZE as f32)], },
+            FaceVertex { position: (q * Vector3::from([-(SIZE as f32), SIZE as f32, 0.0]) + position).into(), normal: (normal).into(), tex_coords: [-(SIZE as f32), SIZE as f32], },
+            FaceVertex { position: (q * Vector3::from([SIZE as f32, SIZE as f32, 0.0]) + position).into(), normal: (normal).into(), tex_coords: [SIZE as f32, SIZE as f32], },
+            FaceVertex { position: (q * Vector3::from([-(SIZE as f32), -(SIZE as f32), 0.0]) + position).into(), normal: (normal).into(), tex_coords: [-(SIZE as f32), -(SIZE as f32)], },
+            FaceVertex { position: (q * Vector3::from([SIZE as f32, -(SIZE as f32), 0.0]) + position).into(), normal: (normal).into(), tex_coords: [SIZE as f32, -(SIZE as f32)], },
         ];
         println!("{:?}", &vertices);
         glium::vertex::VertexBuffer::new(&display, &vertices).unwrap()
-        // let basis = Quaternion::from_axis_angle(board[self.face].normal, Angle::turn_div_4());
-        // let shape = glium::vertex::VertexBuffer::new(&display, &[
-        //         Vertex { position: [-1.0,  1.0, 0.0], normal: [0.0, 0.0, -1.0] },
-        //         Vertex { position: [ 1.0,  1.0, 0.0], normal: [0.0, 0.0, -1.0] },
-        //         Vertex { position: [-1.0, -1.0, 0.0], normal: [0.0, 0.0, -1.0] },
-        //         Vertex { position: [ 1.0, -1.0, 0.0], normal: [0.0, 0.0, -1.0] },
-        //     ]).unwrap();
     }).collect::<Vec<_>>();
 
+    const GRID_WIDTH: usize = 128;
+    const GRID_HEIGHT: usize = 128;
+
+    let mut grid_texture = [(0.0f32, 0.0f32, 0.0f32, 0.0f32); GRID_WIDTH * GRID_HEIGHT];
+    for j in 0..GRID_HEIGHT {
+        for i in 0..GRID_WIDTH {
+            grid_texture[j*GRID_WIDTH + i] = if i < GRID_WIDTH / 16 || j < GRID_HEIGHT / 16 { (0.0, 0.0, 0.0, 1.0) } else { (0.0f32, 0.1f32, 0.2f32, 1.0f32) };
+        }
+    }
+
+    let grid_texture = glium::texture::RawImage2d {
+        data: grid_texture.as_ref().into(),
+        width: GRID_WIDTH as u32,
+        height: GRID_HEIGHT as u32,
+        format: glium::texture::ClientFormat::F32F32F32F32,
+    };
+    let grid_texture = glium::texture::Texture2d::new(&display, grid_texture).unwrap();
 
     let vertex1 = Vertex { position: [-0.5, -0.5, 0.0], normal: [0.0, 1.0, 1.0], };
     let vertex2 = Vertex { position: [ 0.0,  0.5, 0.0], normal: [1.0, 0.0, 1.0], };
@@ -262,177 +292,8 @@ fn main() {
         0u16, 1, 2
     ]).unwrap(); */
     // let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
-    let vertex_shader_src = r#"
-        #version 150
-
-        in vec3 position;
-        in vec3 normal;
-
-        out vec3 v_normal;
-        out vec3 v_position;
-
-        uniform mat4 perspective;
-        uniform mat4 view;
-        uniform mat4 model;
-
-        void main() {
-            mat4 modelview = view * model;
-            v_normal = transpose(inverse(mat3(modelview))) * normal;
-            // gl_Position = vec4(position, 0.0, 1.0);
-            gl_Position = perspective * modelview * vec4(position, 1.0);
-            v_position = gl_Position.xyz / gl_Position.w;
-        }
-    "#;
-    let fragment_shader_src = r#"
-        #version 140
-
-        in vec3 v_normal;
-        in vec3 v_position;
-
-        out vec4 color;
-
-        uniform vec3 u_light;
-
-        const vec3 ambient_color = vec3(0.2, 0.0, 0.0);
-        const vec3 diffuse_color = vec3(0.6, 0.0, 0.0);
-        const vec3 specular_color = vec3(1.0, 1.0, 1.0);
-
-        void main() {
-            float diffuse = max(dot(normalize(v_normal), normalize(u_light)), 0.0);
-
-            vec3 camera_dir = normalize(-v_position);
-            vec3 half_direction = normalize(normalize(u_light) + camera_dir);
-            float specular = pow(max(dot(half_direction, normalize(v_normal)), 0.0), 16.0);
-
-            color = vec4(ambient_color + diffuse * diffuse_color + specular * specular_color, 1.0);
-
-            // float brightness = dot(normalize(v_normal), normalize(u_light));
-            // vec3 dark_color = vec3(0.6, 0.0, 0.0);
-            // vec3 regular_color = vec3(1.0, 0.0, 0.0);
-            // color = vec4(1.0, 0.0, 0.0, 1.0);
-            // color = vec4(mix(dark_color, regular_color, brightness), 1.0);
-        }
-    "#;
-    let cube_vertex_shader_src = r#"
-        #version 150
-
-        in vec3 position;
-        in vec3 normal;
-        in vec2 tex_coords;
-
-        out vec3 v_normal;
-        out vec3 v_position;
-        out vec2 v_tex_coords;
-
-        uniform mat4 perspective;
-        uniform mat4 view;
-        uniform mat4 model;
-
-        void main() {
-            v_tex_coords = tex_coords;
-            // if (
-            mat4 modelview = view * model;
-            v_normal = transpose(inverse(mat3(modelview))) * normal;
-            // gl_Position = vec4(position, 0.0, 1.0);
-            gl_Position = perspective * modelview * vec4(position, 1.0);
-            v_position = gl_Position.xyz / gl_Position.w;
-        }
-    "#;
-    let cube_fragment_shader_src = r#"
-        #version 140
-
-        in vec3 v_normal;
-        in vec3 v_position;
-        in vec2 v_tex_coords;
-
-        out vec4 color;
-
-        uniform vec3 u_light;
-
-        const vec3 ambient_color = vec3(0.0, 0.0, 0.1);
-        const vec3 diffuse_color = vec3(0.2, 0.2, 0.2);
-        const vec3 specular_color = vec3(0.0, 0.1, 0.0);
-        const vec3 grid_ambient_color = vec3(0.0, 0.0, 0.0);
-        const vec3 grid_diffuse_color = vec3(0.2, 0.0, 0.0);
-        const vec3 grid_specular_color = vec3(0.2, 0.0, 0.0);
-
-        mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 uv) {
-            vec3 dp1 = dFdx(pos);
-            vec3 dp2 = dFdy(pos);
-            vec2 duv1 = dFdx(uv);
-            vec2 duv2 = dFdy(uv);
-            vec3 dp2perp = cross(dp2, normal);
-            vec3 dp1perp = cross(normal, dp1);
-            vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-            vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-            float invmax = inversesqrt(max(dot(T, T), dot(B, B)));
-            return mat3(T * invmax, B * invmax, normal);
-        }
-
-        void main() {
-            vec3 camera_dir = normalize(-v_position);
-            vec3 half_direction = normalize(normalize(u_light) + camera_dir);
-
-            /// mat3 tbn = cotangent_frame(v_position, v_normal, vec2(0, 0));
-            if(fract(v_tex_coords.x) < 0.1f || fract(v_tex_coords.y) < 0.1f) {
-                /*float dist = 0;
-                if (fract(v_tex_coords.x) < 0.01f) {
-                  dist += fract(v_tex_coords.x) * fract(v_tex_coords.x);
-                }
-                if (fract(v_tex_coords.y) < 0.01f) {
-                  dist += fract(v_tex_coords.y) * fract(v_tex_coords.y);
-                }
-                dist = sqrt(dist);
-                // Idea: based on distance to the grid line, we make the hole progressively deeper.
-                float x_angle;
-                if (fract(v_tex_coords.x) < 0.01f) {
-                  // y axis, angle is with x and z.
-                  // cos theta = fract(v_tex_coords.x) / dist.
-                  x_angle = acos(fract(v_tex_coords.x) / dist);
-                } else {
-                  x_angle = 0.0;
-                }
-                float y_angle;
-                if (fract(v_tex_coords.y) < 0.01f) {
-                  // x axis, angle is with y and z.
-                  // sin theta = fract(v_tex_coords.y) / dist;
-                  y_angle = asin(fract(v_tex_coords.y) / 0.01f);
-                } else {
-                  y_angle = 0.0;
-                }
-                float normal_map;
-                // Attempt to make a normal pointing inward at an angle proportional to distance to
-                // the grid interior.
-                if (fract(v_tex_coords.x) < fract(v_tex_coords.y)) {
-                    float dist = sqrt(0.01f - fract(v_tex_coords.x) * fract(v_tex_coords.x));
-                    normal_map = vec3(, 0.0, );
-                } else {
-                    // x axis, angle is with y and z.
-                    float dist = sqrt(0.01f - fract(v_tex_coords.y) * fract(v_tex_coords.y));
-                }
-                vec3 normal_map = vec3(dist, );
-                mat3 tbn = cotangent_frame(v_position, v_normal, v_tex_coords);
-                vec3 real_normal = normalize(tbn * -(normal_map * 2.0 - 1.0));*/
-                float diffuse = max(dot(normalize(v_normal), normalize(u_light)), 0.0);
-                float specular = pow(max(dot(half_direction, normalize(v_normal)), 0.0), 16.0);
-                color = vec4(grid_ambient_color + diffuse * grid_diffuse_color + specular * grid_specular_color, 1.0);
-            } else {
-                float diffuse = max(dot(normalize(v_normal), normalize(u_light)), 0.0);
-                float specular = pow(max(dot(half_direction, normalize(v_normal)), 0.0), 16.0);
-
-                color = vec4(ambient_color + diffuse * diffuse_color + specular * specular_color, 1.0);
-            }
-
-            // float brightness = dot(normalize(v_normal), normalize(u_light));
-            // vec3 dark_color = vec3(0.6, 0.0, 0.0);
-            // vec3 regular_color = vec3(1.0, 0.0, 0.0);
-            // color = vec4(1.0, 0.0, 0.0, 1.0);
-            // color = vec4(mix(dark_color, regular_color, brightness), 1.0);
-        }
-    "#;
-    let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
-
-    let cube_program = glium::Program::from_source(&display, cube_vertex_shader_src, cube_fragment_shader_src, None).unwrap();
+    let program = glium::Program::from_source(&display, include_str!("shaders/mob_vertex.glsl"), include_str!("shaders/mob_fragment.glsl"), None).unwrap();
+    let cube_program = glium::Program::from_source(&display, include_str!("shaders/cube_vertex.glsl"), include_str!("shaders/cube_fragment.glsl"), None).unwrap();
 
     // depth buffer test
     let cube_params = glium::DrawParameters {
@@ -442,7 +303,7 @@ fn main() {
             .. Default::default()
         },
         // polygon_mode: glium::draw_parameters::PolygonMode::Line,
-        // backface_culling: glium::draw_parameters::BackfaceCullingMode::CullCounterClockwise,            
+        backface_culling: glium::draw_parameters::BackfaceCullingMode::CullClockwise,
         .. Default::default()
     };
 
@@ -453,13 +314,18 @@ fn main() {
             write: true,
             .. Default::default()
         },
-        // backface_culling: glium::draw_parameters::BackfaceCullingMode::CullCounterClockwise,            
+        // backface_culling: glium::draw_parameters::BackfaceCullingMode::CullCounterClockwise,
         .. Default::default()
     };
 
     let mut angle = 0f32;
     // let mut t: f32 = 0.1f32;
-    loop {
+    let start = PreciseTime::now();
+    let mut frames = 0;
+    let mut cx = -20.0;
+    let mut cy = 20.0;
+    let mut cz = -60.0;
+    'game: loop {
         // t = 0.1;
         angle += 0.005f32;
 
@@ -467,7 +333,7 @@ fn main() {
         let light = [1.4, 0.4, -0.7f32];
 
         // the view matrix
-        let view = view_matrix(&[-20.0, 20.0, -60.0], &[25.0, -15.0, 60.0], &[0.0, 1.0, 0.0]);
+        let view = view_matrix(&[cx, cy, cz], /*&[25.0, -15.0, 60.0]*/&[-cx, -cy, -cz], &[0.0, 1.0, 0.0]);
         //let view = view_matrix(&[5.0, -10.0, 15.0], &[0.1, 2.0, -2.0], &[0.0, 1.0, 0.0]);
 
         let mut target = display.draw();
@@ -476,13 +342,13 @@ fn main() {
         let perspective = {
             let (width, height) = target.get_dimensions();
             let aspect_ratio = height as f32 / width as f32;
-        
+
             let fov: f32 = 3.141592 / 3.0;
             let zfar = 1024.0;
             let znear = 0.1;
-        
+
             let f = 1.0 / (fov / 2.0).tan();
-        
+
             [
                 [f *   aspect_ratio   ,    0.0,              0.0              ,   0.0],
                 [         0.0         ,     f ,              0.0              ,   0.0],
@@ -504,6 +370,13 @@ fn main() {
                 [0.0, 0.0, 0.0, 1.0f32],
             ];
 
+            let grid_texture_sample = grid_texture
+                .sampled()
+                .wrap_function(glium::uniforms::SamplerWrapFunction::Repeat)
+                .minify_filter(glium::uniforms::MinifySamplerFilter::LinearMipmapLinear)
+                .magnify_filter(glium::uniforms::MagnifySamplerFilter::Linear)
+                .anisotropy(16);
+
             // println!("{:?}", mob);
             // mob.physics(&faces, 0.05);
             // uniforms
@@ -512,12 +385,13 @@ fn main() {
                 model: model,
                 view: view,
                 perspective: perspective,
+                diffuse_tex: grid_texture_sample,
             };
 
-            let indices = glium::IndexBuffer::new(&display, glium::index::PrimitiveType::TrianglesList, &[
+            /* let indices = glium::IndexBuffer::new(&display, glium::index::PrimitiveType::TrianglesList, &[
                 0u16, 1, 2,
                 1, 2, 3,
-            ]).unwrap();
+            ]).unwrap();*/
             // draw the triangle here
 
             target.draw(face, /*&indices*/glium::index::NoIndices(glium::index::PrimitiveType::TriangleStrip), &cube_program, /*&glium::uniforms::EmptyUniforms*/&uniforms,
@@ -551,12 +425,29 @@ fn main() {
         }
 
         target.finish().unwrap();
+        frames += 1;
 
         for ev in display.poll_events() {
             match ev {
-                glium::glutin::Event::Closed => return,
+                glium::glutin::Event::KeyboardInput(glium::glutin::ElementState::Pressed, _, Some(glium::glutin::VirtualKeyCode::Left)) => {
+                    cx -= 5.0;
+                },
+                glium::glutin::Event::KeyboardInput(glium::glutin::ElementState::Pressed, _, Some(glium::glutin::VirtualKeyCode::Right)) => {
+                    cx += 5.0;
+                },
+                glium::glutin::Event::KeyboardInput(glium::glutin::ElementState::Pressed, _, Some(glium::glutin::VirtualKeyCode::Up)) => {
+                    cz += 5.0;
+                },
+                glium::glutin::Event::KeyboardInput(glium::glutin::ElementState::Pressed, _, Some(glium::glutin::VirtualKeyCode::Down)) => {
+                    cz -= 5.0;
+                },
+                glium::glutin::Event::Closed => break 'game,
                 _ => ()
             }
         }
     }
+
+    let end = PreciseTime::now();
+    let duration = start.to(end).num_nanoseconds().map( |ns| frames as f64 * 1_000_000_000.0 / ns as f64 );
+    println!("fps: {:?}", duration);
 }

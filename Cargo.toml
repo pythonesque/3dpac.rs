@@ -1,8 +1,9 @@
 [package]
-name = "packman"
+name = "pacman"
 version = "0.1.0"
 authors = ["Joshua Yanovski <pythonesque@gmail.com>"]
 
 [dependencies]
-glium = "*"
-cgmath = "*"
+glium = "0.10.0"
+cgmath = "0.7.0"
+time = "0.1.34"
