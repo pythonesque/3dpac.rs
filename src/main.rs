@@ -168,6 +168,12 @@ fn view_matrix(position: &[f32; 3], direction: &[f32; 3], up: &[f32; 3]) -> [[f3
 }
 
 fn main() {
+    // TODO: Currently glium doesn't seem to have great support for:
+    //   * resident textures (specifically, can't use them with samplers)
+    //   * regular multidraw (though multidraw indirect may work)
+    //
+    // Try to incorporate both.
+
     use glium::{DisplayBuild, Surface};
     let display = glium::glutin::WindowBuilder::new()
         .with_depth_buffer(24)
@@ -256,10 +262,10 @@ fn main() {
             Quaternion::between_vectors(initial, normal)
         };
         let vertices = [
-            FaceVertex { position: (q * Vector3::from([-(SIZE as f32), SIZE as f32, 0.0]) + position).into(), normal: (normal).into(), tex_coords: [-(SIZE as f32), SIZE as f32], },
-            FaceVertex { position: (q * Vector3::from([SIZE as f32, SIZE as f32, 0.0]) + position).into(), normal: (normal).into(), tex_coords: [SIZE as f32, SIZE as f32], },
-            FaceVertex { position: (q * Vector3::from([-(SIZE as f32), -(SIZE as f32), 0.0]) + position).into(), normal: (normal).into(), tex_coords: [-(SIZE as f32), -(SIZE as f32)], },
-            FaceVertex { position: (q * Vector3::from([SIZE as f32, -(SIZE as f32), 0.0]) + position).into(), normal: (normal).into(), tex_coords: [SIZE as f32, -(SIZE as f32)], },
+            FaceVertex { position: (q * Vector3::from([-(SIZE as f32), SIZE as f32, 0.0]) + position).into(), normal: normal.into(), tex_coords: [-(SIZE as f32), SIZE as f32], },
+            FaceVertex { position: (q * Vector3::from([SIZE as f32, SIZE as f32, 0.0]) + position).into(), normal: normal.into(), tex_coords: [SIZE as f32, SIZE as f32], },
+            FaceVertex { position: (q * Vector3::from([-(SIZE as f32), -(SIZE as f32), 0.0]) + position).into(), normal: normal.into(), tex_coords: [-(SIZE as f32), -(SIZE as f32)], },
+            FaceVertex { position: (q * Vector3::from([SIZE as f32, -(SIZE as f32), 0.0]) + position).into(), normal: normal.into(), tex_coords: [SIZE as f32, -(SIZE as f32)], },
         ];
         println!("{:?}", &vertices);
         glium::vertex::VertexBuffer::new(&display, &vertices).unwrap()
@@ -267,21 +273,24 @@ fn main() {
 
     const GRID_WIDTH: usize = 128;
     const GRID_HEIGHT: usize = 128;
+    const TILE_COUNT: usize = 4;
 
-    let mut grid_texture = [(0.0f32, 0.0f32, 0.0f32, 0.0f32); GRID_WIDTH * GRID_HEIGHT];
-    for j in 0..GRID_HEIGHT {
-        for i in 0..GRID_WIDTH {
-            grid_texture[j*GRID_WIDTH + i] = if i < GRID_WIDTH / 16 || j < GRID_HEIGHT / 16 { (0.0, 0.0, 0.0, 1.0) } else { (0.0f32, 0.1f32, 0.2f32, 1.0f32) };
+    let mut grid_textures = [[(0.0f32, 0.0f32, 0.0f32, 0.0f32); GRID_WIDTH * GRID_HEIGHT]; TILE_COUNT];
+    for (k, grid_texture) in grid_textures.iter_mut().enumerate() {
+        for j in 0..GRID_HEIGHT {
+            for i in 0..GRID_WIDTH {
+                grid_texture[j*GRID_WIDTH + i] = if k & 1 == 1 && i < GRID_WIDTH / 16 || k & 2 == 2 && j < GRID_HEIGHT / 16 { (0.0, 0.0, 0.0, 1.0) } else { (0.0f32 as f32, 0.1f32, 0.2f32, 1.0f32) };
+            }
         }
     }
 
-    let grid_texture = glium::texture::RawImage2d {
+    let grid_textures = grid_textures.into_iter().map( |grid_texture| glium::texture::RawImage2d {
         data: grid_texture.as_ref().into(),
         width: GRID_WIDTH as u32,
         height: GRID_HEIGHT as u32,
         format: glium::texture::ClientFormat::F32F32F32F32,
-    };
-    let grid_texture = glium::texture::Texture2d::new(&display, grid_texture).unwrap();
+    } ).collect::<Vec<_>>();
+    let grid_texture = glium::texture::Texture2dArray::new(&display, grid_textures).unwrap();
 
     let vertex1 = Vertex { position: [-0.5, -0.5, 0.0], normal: [0.0, 1.0, 1.0], };
     let vertex2 = Vertex { position: [ 0.0,  0.5, 0.0], normal: [1.0, 0.0, 1.0], };
