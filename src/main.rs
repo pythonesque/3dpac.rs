@@ -1,9 +1,12 @@
+#![feature(box_syntax)]
+
 extern crate cgmath;
 #[macro_use]
 extern crate glium;
+extern crate glutin;
 extern crate time;
 
-use cgmath::{Angle, BaseFloat, BaseNum, EuclideanVector, One, Quaternion, Rad, Rotation, Rotation3, Point, Point2, Point3, Vector, Vector2, Vector3, Zero};
+use cgmath::{Angle, BaseFloat, BaseNum, Deg, EuclideanVector, Matrix4, One, Point, Point2, Point3, Quaternion, Rad, Rotation, Rotation3, SquareMatrix, Vector, Vector2, Vector3, Vector4, Zero};
 
 use std::f32;
 use time::{PreciseTime};
@@ -275,7 +278,7 @@ fn main() {
     const GRID_HEIGHT: usize = 128;
     const TILE_COUNT: usize = 4;
 
-    let mut grid_textures = [[(0.0f32, 0.0f32, 0.0f32, 0.0f32); GRID_WIDTH * GRID_HEIGHT]; TILE_COUNT];
+    let mut grid_textures = box [[(0.0f32, 0.0f32, 0.0f32, 0.0f32); GRID_WIDTH * GRID_HEIGHT]; TILE_COUNT];
     for (k, grid_texture) in grid_textures.iter_mut().enumerate() {
         for j in 0..GRID_HEIGHT {
             for i in 0..GRID_WIDTH {
@@ -331,9 +334,18 @@ fn main() {
     // let mut t: f32 = 0.1f32;
     let start = PreciseTime::now();
     let mut frames = 0;
-    let mut cx = -20.0;
+    // let mut camera_pos = Vector3 { x: -20.0, y: 20.0, z: -60.0 };
+    let mut camera_pos = Vector3 { x: 0.0, y: 0.0, z: -60.0 };
+    /*let mut cx = -20.0;
     let mut cy = 20.0;
-    let mut cz = -60.0;
+    let mut cz = -60.0;*/
+    let mut camera_dir = Quaternion::from_sv(0.0, [0.0, 0.0, 1.0].into());
+    let mut translation = Vector3 { x: 0.0f32, y: 0.0, z: 5.0 };
+    let window = display.get_window().unwrap();
+    window.set_cursor(glutin::MouseCursor::Crosshair);
+    window.set_cursor_state(glium::glutin::CursorState::Grab).unwrap();
+    let (width, height) = window.get_inner_size_pixels().unwrap();
+    window.set_cursor_position(width as i32 / 4, height as i32 / 4).unwrap();
     'game: loop {
         // t = 0.1;
         angle += 0.005f32;
@@ -342,14 +354,17 @@ fn main() {
         let light = [1.4, 0.4, -0.7f32];
 
         // the view matrix
-        let view = view_matrix(&[cx, cy, cz], /*&[25.0, -15.0, 60.0]*/&[-cx, -cy, -cz], &[0.0, 1.0, 0.0]);
+        let direction = camera_dir.rotate_vector([0.0, 0.0, 1.0].into());
+        let up = camera_dir.rotate_vector([0.0, -1.0, 0.0].into());
+        let view = view_matrix(&camera_pos.into(), &direction.into(), &up.into());
+        //let view = view_matrix(&[cx, cy, cz], /*&[25.0, -15.0, 60.0]*/&[-cx, -cy, -cz], &[0.0, 1.0, 0.0]);
         //let view = view_matrix(&[5.0, -10.0, 15.0], &[0.1, 2.0, -2.0], &[0.0, 1.0, 0.0]);
 
         let mut target = display.draw();
 
         // perspective
+        let (width, height) = target.get_dimensions();
         let perspective = {
-            let (width, height) = target.get_dimensions();
             let aspect_ratio = height as f32 / width as f32;
 
             let fov: f32 = 3.141592 / 3.0;
@@ -438,19 +453,24 @@ fn main() {
 
         for ev in display.poll_events() {
             match ev {
-                glium::glutin::Event::KeyboardInput(glium::glutin::ElementState::Pressed, _, Some(glium::glutin::VirtualKeyCode::Left)) => {
-                    cx -= 5.0;
+                glium::glutin::Event::MouseMoved((mdx, mdy)) => {
+                    // Find the 3D coordinate to look at based on the 2D coordinate.
+                    let x = 2.0 * mdx as f32 / width as f32 - 1.0;
+                    let y = 2.0 * mdy as f32 / height as f32 - 1.0;
+                    let yaw = Quaternion::from_axis_angle([0.0, -1.0, 0.0].into(), Rad::turn_div_4() * x);
+                    let pitch = Quaternion::from_axis_angle([-1.0, 0.0, 0.0].into(), Rad::turn_div_4() * y);
+                    camera_dir.concat_self(&yaw);
+                    camera_dir.concat_self(&pitch);
+                    window.set_cursor_position(width as i32 / 4, height as i32 / 4).unwrap();
                 },
-                glium::glutin::Event::KeyboardInput(glium::glutin::ElementState::Pressed, _, Some(glium::glutin::VirtualKeyCode::Right)) => {
-                    cx += 5.0;
+                glium::glutin::Event::KeyboardInput(glium::glutin::ElementState::Pressed, _, Some(glium::glutin::VirtualKeyCode::W)) => {
+                    camera_pos = camera_pos + camera_dir.rotate_vector(translation);
                 },
-                glium::glutin::Event::KeyboardInput(glium::glutin::ElementState::Pressed, _, Some(glium::glutin::VirtualKeyCode::Up)) => {
-                    cz += 5.0;
+                glium::glutin::Event::KeyboardInput(glium::glutin::ElementState::Pressed, _, Some(glium::glutin::VirtualKeyCode::S)) => {
+                    camera_pos = camera_pos - camera_dir.rotate_vector(translation);
                 },
-                glium::glutin::Event::KeyboardInput(glium::glutin::ElementState::Pressed, _, Some(glium::glutin::VirtualKeyCode::Down)) => {
-                    cz -= 5.0;
-                },
-                glium::glutin::Event::Closed => break 'game,
+                glium::glutin::Event::KeyboardInput(glium::glutin::ElementState::Pressed, _, Some(glium::glutin::VirtualKeyCode::Escape))
+                    | glium::glutin::Event::Closed => break 'game,
                 _ => ()
             }
         }

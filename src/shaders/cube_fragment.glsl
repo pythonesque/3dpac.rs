@@ -18,7 +18,7 @@ const vec3 specular_color = vec3(0.5, 0.5, 0.5);
 // const vec3 grid_specular_color = vec3(0.0, 0.0, 0.0);
 
 // number of layers in texture
-const int d = -1;
+// const int d = -1;
 
 mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 uv) {
   vec3 dp1 = dFdx(pos);
@@ -44,7 +44,9 @@ void main() {
   //   layer = (int(ceil(v_tex_coords.x + 0.5)) | int(ceil(v_tex_coords.y + 0.5))) & 1;
   // }
   // float actual_layer = max(0, min(d - 1, floor(layer + 0.5)) );
-  float layer = (int(ceil(v_tex_coords.x + 0.5)) | int(ceil(v_tex_coords.y + 0.5))) & 3;
+  // float layer = (int(floor(v_tex_coords.x + 0.5)) | int(floor(v_tex_coords.y + 0.5))) & 3;
+  float layer = (int(v_tex_coords.x) | int(v_tex_coords.y)) & 3;
+  // vec3 diffuse_color = texture(diffuse_tex, vec3(v_tex_coords.xy + vec2(0.5, 0.5), layer)).rgb;
   vec3 diffuse_color = texture(diffuse_tex, vec3(v_tex_coords, layer)).rgb;
   vec3 ambient_color = diffuse_color * 0.2;
   // vec3 ambient_color = vec3(0.0, 0.0, diffuse_color.z * 0.5);
