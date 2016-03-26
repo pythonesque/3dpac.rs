@@ -9,7 +9,7 @@ extern crate time;
 use cgmath::{Angle, BaseFloat, BaseNum, Deg, EuclideanVector, Matrix4, One, Point, Point2, Point3, Quaternion, Rad, Rotation, Rotation3, SquareMatrix, Vector, Vector2, Vector3, Vector4, Zero};
 
 use std::f32;
-use time::{PreciseTime};
+use time::{Duration, PreciseTime};
 
 const SIZE: usize = 16;
 
@@ -215,7 +215,7 @@ fn main() {
             position: [-(SIZE as f32), -(SIZE as f32), -(SIZE as f32)].into(),
             // position: [SIZE as f32/* - 1.0 / (2.0 * SIZE as f32)*/, SIZE as f32/* - 1.0 / (2.0 * SIZE as f32)*/, SIZE as f32/* - 1.0 / (2.0 * SIZE as f32)*/].into(),
             // velocity: [0.0, 0.0, 0.0].into(),
-            velocity: Vector3::from([0.0, 1.0, 0.0]),
+            velocity: Vector3::from([0.0, 1.5, 0.0]),
         },
         Mob {
             face: 3,
@@ -223,22 +223,22 @@ fn main() {
             // position: [SIZE as f32/* - 1.0 / (2.0 * SIZE as f32)*/, SIZE as f32/* - 1.0 / (2.0 * SIZE as f32)*/, SIZE as f32/* - 1.0 / (2.0 * SIZE as f32)*/].into(),
             // velocity: [0.0, 0.0, 0.0].into(),
             //velocity: [0.0, 1.0, 0.0].into(),
-            velocity: Vector3::from([0.0, 1.0, -1.0]).normalize(),
+            velocity: Vector3::from([0.0, 1.5f32 * f32::consts::FRAC_PI_4.cos(), -1.5 * f32::consts::FRAC_PI_4.sin()]),
         },
         Mob {
             face: 0,
             position: [SIZE as f32, 0.0, 0.0].into(),
-            velocity: [0.0, 0.0, 1.0].into(),
+            velocity: [0.0, 0.0, 1.5].into(),
         },
         Mob {
             face: 4,
             position: [0.0, -(SIZE as f32), -(SIZE as f32)].into(),
-            velocity: [-2.0, 0.0, 0.0].into(),
+            velocity: [-3.0, 0.0, 0.0].into(),
         },
         Mob {
             face: 2,
             position: [SIZE as f32, SIZE as f32, SIZE as f32].into(),
-            velocity: [0.0, -0.5, 0.0].into(),
+            velocity: [0.0, -0.75, 0.0].into(),
         },
     ];
     let initial = [0.0, 0.0, 1.0].into();
@@ -346,7 +346,9 @@ fn main() {
     window.set_cursor_state(glium::glutin::CursorState::Grab).unwrap();
     let (width, height) = window.get_inner_size_pixels().unwrap();
     window.set_cursor_position(width as i32 / 4, height as i32 / 4).unwrap();
+    let mut current_time = start;
     'game: loop {
+
         // t = 0.1;
         angle += 0.005f32;
 
@@ -422,6 +424,15 @@ fn main() {
                 &cube_params).unwrap();
         }
 
+        let new_time = PreciseTime::now();
+        let dt = current_time.to(new_time);
+        current_time = new_time;
+        let secs = dt.num_seconds();
+        // Convinced this will not overflow because the internal structure of Duration is i64 secs
+        // and i32 ns, and max ns obviously fit in an i32.  Thus, the unwrap() here is safe and
+        // will never lead to a crash.
+        let remainder_secs = (dt - Duration::seconds(secs)).num_nanoseconds().unwrap() as f32 / 1_000_000_000.00;
+
         let len = mobs.len() as f32;
         for (d, mob) in mobs.iter_mut().enumerate() {
             let d = f32::consts::PI * 2.0 / len * d as f32 + angle;
@@ -434,7 +445,10 @@ fn main() {
             ];
 
             // println!("{:?}", mob);
-            mob.physics(&faces, 0.05);
+            for _ in 0..secs {
+                mob.physics(&faces, 1.0);
+            }
+            mob.physics(&faces, remainder_secs);
             // uniforms
             let uniforms = uniform! {
                 u_light: light,
